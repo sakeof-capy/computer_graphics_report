@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WebGPU Rotating Triangle</title>
+</head>
+
+<body>
+
+<canvas id="c" width="800" height="600"></canvas>
+
+<script type="module">
+
+if (!navigator.gpu) {
+    document.body.innerHTML = "WebGPU not supported";
+    throw new Error("WebGPU not supported");
+}
+
+const canvas = document.getElementById("c");
+
+const adapter = await navigator.gpu.requestAdapter();
+if (!adapter) throw new Error("No GPU adapter found");
+
+const device = await adapter.requestDevice();
+
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+
+context.configure({
+    device,
+    format,
+    alphaMode: "opaque"
+});
+
+const shader = device.createShaderModule({
+code: `
+struct Uniforms {
+    angle : f32
+}
+
+@group(0) @binding(0)
+var<uniform> uniforms : Uniforms;
+
+fn rotate(v: vec2f, a: f32) -> vec2f {
+    let c = cos(a);
+    let s = sin(a);
+    return vec2f(
+        v.x * c - v.y * s,
+        v.x * s + v.y * c
+    );
+}
+
+@vertex
+fn vs(@builtin(vertex_index) i : u32)
+    -> @builtin(position) vec4f {
+
+    var p = array(
+        vec2f(0.0, 0.5),
+        vec2f(-0.5, -0.5),
+        vec2f(0.5, -0.5)
+    );
+
+    let pos = rotate(p[i], uniforms.angle);
+
+    return vec4f(pos, 0.0, 1.0);
+}
+
+@fragment
+fn fs() -> @location(0) vec4f {
+    return vec4f(0.0, 0.8, 1.0, 1.0);
+}
+`
+});
+
+const uniformBuffer = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+const pipeline = device.createRenderPipeline({
+    layout: "auto",
+
+    vertex: {
+        module: shader,
+        entryPoint: "vs"
+    },
+
+    fragment: {
+        module: shader,
+        entryPoint: "fs",
+        targets: [{ format }]
+    },
+
+    primitive: {
+        topology: "triangle-list"
+    }
+});
+
+const bindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{
+        binding: 0,
+        resource: {
+            buffer: uniformBuffer
+        }
+    }]
+});
+
+let angle = 0;
+
+function frame() {
+
+    angle += 0.02;
+
+    device.queue.writeBuffer(
+        uniformBuffer,
+        0,
+        new Float32Array([angle])
+    );
+
+    const encoder = device.createCommandEncoder();
+
+    const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+            view: context.getCurrentTexture().createView(),
+            loadOp: "clear",
+            clearValue: [0,0,0,1],
+            storeOp: "store"
+        }]
+    });
+
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    pass.draw(3);
+    pass.end();
+
+    device.queue.submit([encoder.finish()]);
+
+    requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+
+</script>
+
+</body>
+</html>
