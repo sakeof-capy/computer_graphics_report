@@ -1,0 +1,10 @@
+[package]
+name = "web_gpu_rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wgpu = "0.17"       # WebGPU implementation for Rust
+winit = "0.28"      # Window creation & event loop
+pollster = "0.3"    # To block on async functions for setup
+bytemuck = { version = "1.25", features = ["derive"] }
